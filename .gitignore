@@ -1,9 +1,30 @@
-
 # TDLib Session (niemals committen!)
 backend/session_data/
+
+# Uploads
+backend/uploads/
 
 # Node modules
 backend/node_modules/
 
+# Environment
+.env
+.env.local
+
 # NGINX cache
 frontend/nginx-cache/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

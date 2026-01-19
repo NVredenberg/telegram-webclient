@@ -1,0 +1,23 @@
+# Backend
+backend/node_modules
+backend/session_data
+backend/uploads
+backend/npm-debug.log
+backend/.env
+
+# Frontend
+frontend/nginx-cache
+
+# Git
+.git
+.gitignore
+
+# Dokumentation
+README.md
+*.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo

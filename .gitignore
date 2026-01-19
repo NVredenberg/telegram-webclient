@@ -1,0 +1,9 @@
+
+# TDLib Session (niemals committen!)
+backend/session_data/
+
+# Node modules
+backend/node_modules/
+
+# NGINX cache
+frontend/nginx-cache/

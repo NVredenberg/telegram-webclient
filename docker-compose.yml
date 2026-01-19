@@ -1,0 +1,24 @@
+
+version: "3.8"
+
+services:
+
+  backend:
+    build: ./backend
+    container_name: telegram-backend
+    environment:
+      - API_ID=DEINE_API_ID
+      - API_HASH=DEIN_API_HASH
+      - PHONE_NUMBER=+491234567
+    volumes:
+      - ./backend/session_data:/app/session_data
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    container_name: telegram-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend

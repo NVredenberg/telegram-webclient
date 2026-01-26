@@ -18,7 +18,7 @@ services:
     build: ./frontend
     container_name: telegram-frontend
     ports:
-      - "3000:80"
+      - "1989:80"
     depends_on:
       - backend
     restart: unless-stopped

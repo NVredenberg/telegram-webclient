@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "tdl": "^7.4.1",
-    "tdl-tdlib-addon": "^2.0.0",
+    "tdl-tdlib-ffi": "^2",
     "express": "^4.19.2",
     "ws": "^8.14.2",
     "cors": "^2.8.5",

@@ -5,8 +5,12 @@ services:
   backend:
     build: ./backend
     container_name: telegram-backend
-    env_file:
-      - .env
+    environment:
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+      - PHONE_NUMBER=${PHONE_NUMBER}
+      - PORT=1993
+      - CORS_ORIGIN=*
     volumes:
       - ./backend/session_data:/app/session_data
       - ./backend/uploads:/app/uploads

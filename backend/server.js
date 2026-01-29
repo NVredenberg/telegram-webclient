@@ -7,8 +7,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 // Konfiguration aus Umgebungsvariablen
-const API_ID = Number(process.env.API_ID);
-const API_HASH = process.env.API_HASH;
+
+const rawApiId = process.env.API_ID ?? '';
+const API_ID = parseInt(String(rawApiId).trim().replace(/^"+|"+$/g, ''), 10);
+
+
+const rawApiHash = process.env.API_HASH ?? '';
+const API_HASH = String(rawApiHash).trim().replace(/^"+|"+$/g, ''); 
+
 const PHONE_NUMBER_DEFAULT = process.env.PHONE_NUMBER || "";
 const PORT = Number(process.env.PORT) || 1993;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";

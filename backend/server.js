@@ -3,6 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import { WebSocketServer } from "ws";
 import { Client, configure } from "tdl";
+import { TDLib } from "tdl-tdlib-addon";  
 import fs from "node:fs";
 import path from "node:path";
 
@@ -42,39 +43,36 @@ app.use(express.json());
 console.log(`[BOOT] API_ID(parsed)=${API_ID} (type=${typeof API_ID}), API_HASH[0..5]=${(API_HASH||'').slice(0,6)}...`);
 
 // TDLib konfigurieren
-configure({ tdjson: "/app/tdlib/libtdjson.so" });
+//configure({ tdjson: "/app/tdlib/libtdjson.so" });
 
 // TDLib Client initialisieren
 
-const client = new Client({
-  // 1) tdl-Optionen
-  apiId: API_ID,            // Zahl
-  apiHash: API_HASH,        // String
 
-  // 2) zusätzlich: tdlibParameters (erfüllt die alternative Prüfbedingung)
-  tdlibParameters: {
-    api_id: API_ID,
-    api_hash: API_HASH,
-    use_test_dc: false,
-    system_language_code: 'en',
-    device_model: 'server',
-    application_version: '1.0',
-    enable_storage_optimizer: true,
-    database_directory: "/app/session_data",  // optional auch hier
-    files_directory: "/app/session_data/files"
-  },
-
-  // Deine bisherigen Optionen
-  databaseDirectory: "/app/session_data",
-  filesDirectory: "/app/session_data/files",
-  useFileDatabase: true,
-  useChatInfoDatabase: true,
-  useMessageDatabase: true
-});
-
+const client = new Client(
+  new TDLib(),                                  // <— ÄNDERUNG
+  {
+    apiId: API_ID,                              // Zahl
+    apiHash: API_HASH,                          // String
+    databaseDirectory: "/app/session_data",
+    filesDirectory: "/app/session_data/files",
+    useFileDatabase: true,
+    useChatInfoDatabase: true,
+    useMessageDatabase: true,
+    // OPTIONAL zusätzlich (schadet nicht):
+    tdlibParameters: {
+      api_id: API_ID,
+      api_hash: API_HASH,
+      system_language_code: "en",
+      device_model: "server",
+      application_version: "1.0",
+      enable_storage_optimizer: true
+    }
+  }
+);
 
 await client.connect();
 console.log("✅ TDLib gestartet.");
+
 
 // Login State Management
 let resolvePhone = null;

@@ -4,10 +4,11 @@
   "main": "server.js",
   "type": "module",
   "dependencies": {
+    "tdl": "^7.4.1",
+    "tdl-tdlib-addon": "^2.0.0",
     "express": "^4.19.2",
     "ws": "^8.14.2",
     "cors": "^2.8.5",
-    "multer": "^1.4.5-lts.1",
-    "tdl": "^7.3.2"
+    "multer": "^1.4.5-lts.1"
   }
 }

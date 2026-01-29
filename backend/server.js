@@ -18,6 +18,17 @@ if (!API_ID || !API_HASH) {
   process.exit(1);
 }
 
+
+if (!API_ID || Number.isNaN(API_ID)) {
+  console.error('FATAL: API_ID fehlt oder ist keine Zahl. Bitte .env/Compose prüfen.');
+  process.exit(1);
+}
+if (!API_HASH || API_HASH.length < 10) {
+  console.error('FATAL: API_HASH fehlt oder ist offensichtlich ungültig.');
+  process.exit(1);
+}
+
+
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());

@@ -26,7 +26,7 @@ COPY server.js ./server.js
 COPY tdlib ./tdlib
 
 # TDLib für den Loader bekannt machen (wichtig für Addon)
-ENV LD_LIBRARY_PATH=/app/tdlib
+ENV LD_LIBRARY_PATH=/app/tdlib 
 
 # Verzeichnisse, Healthcheck, User
 RUN mkdir -p /app/session_data /app/uploads

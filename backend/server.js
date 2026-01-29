@@ -2,8 +2,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import { WebSocketServer } from "ws";
-import { TDLib } from "tdl-tdlib-addon";
-import { Client } from "tdl";
+import { Client, configure } from "tdl";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -23,8 +22,11 @@ const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
+// TDLib konfigurieren
+configure({ tdjson: "/app/tdlib/libtdjson.so" });
+
 // TDLib Client initialisieren
-const client = new Client(new TDLib("/app/tdlib/libtdjson.so"), {
+const client = new Client({
   apiId: API_ID,
   apiHash: API_HASH,
   databaseDirectory: "/app/session_data",

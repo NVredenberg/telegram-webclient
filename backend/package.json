@@ -1,18 +1,12 @@
 {
-  "name": "telegram-backend",
-  "version": "1.0.0",
-  "description": "Telegram Webclient Backend (tdl 7.4.1 + prebuilt-tdlib)",
-  "type": "module",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
   "dependencies": {
-    "cors": "^2.8.5",
     "express": "^4.19.2",
+    "cors": "^2.8.5",
     "multer": "^1.4.5-lts.1",
+    "ws": "^8.16.0",
     "tdl": "7.4.1",
-    "prebuilt-tdlib": "td-1.8.30",
-    "ws": "^8.16.0"
-  }
+    "prebuilt-tdlib": "td-1.8.50"   
+  },
+  "type": "module",
+  "scripts": { "start": "node server.js" }
 }

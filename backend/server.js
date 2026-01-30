@@ -2,15 +2,12 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import { WebSocketServer } from "ws";
-import { Client, configure } from "tdl"; 
+import { Client } from "tdl"; 
 import fs from "node:fs";
-import path from "node:path";
 
 // Konfiguration aus Umgebungsvariablen
-
 const rawApiId = process.env.API_ID ?? '';
 const API_ID = parseInt(String(rawApiId).trim().replace(/^"+|"+$/g, ''), 10);
-
 
 const rawApiHash = process.env.API_HASH ?? '';
 const API_HASH = String(rawApiHash).trim().replace(/^"+|"+$/g, ''); 
@@ -19,21 +16,15 @@ const PHONE_NUMBER_DEFAULT = process.env.PHONE_NUMBER || "";
 const PORT = Number(process.env.PORT) || 1993;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
-if (!API_ID || !API_HASH) {
-  console.error("❌ API_ID oder API_HASH fehlt in .env!");
-  process.exit(1);
-}
-
-
+// Validierung
 if (!API_ID || Number.isNaN(API_ID)) {
-  console.error('FATAL: API_ID fehlt oder ist keine Zahl. Bitte .env/Compose prüfen.');
+  console.error('❌ FATAL: API_ID fehlt oder ist keine Zahl. Bitte .env/Compose prüfen.');
   process.exit(1);
 }
 if (!API_HASH || API_HASH.length < 10) {
-  console.error('FATAL: API_HASH fehlt oder ist offensichtlich ungültig.');
+  console.error('❌ FATAL: API_HASH fehlt oder ist offensichtlich ungültig.');
   process.exit(1);
 }
-
 
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
@@ -41,22 +32,16 @@ app.use(express.json());
 
 console.log(`[BOOT] API_ID(parsed)=${API_ID} (type=${typeof API_ID}), API_HASH[0..5]=${(API_HASH||'').slice(0,6)}...`);
 
-// TDLib konfigurieren
-configure({ tdjson: "/app/tdlib/libtdjson.so" });
-
 // TDLib Client initialisieren
-
-
-
+// tdl 7.4.1 lädt prebuilt binaries automatisch herunter - KEINE manuelle Konfiguration nötig!
 const client = new Client({
-  apiId: API_ID,          // Zahl
-  apiHash: API_HASH,      // String
+  apiId: API_ID,
+  apiHash: API_HASH,
   databaseDirectory: "/app/session_data",
   filesDirectory: "/app/session_data/files",
   useFileDatabase: true,
   useChatInfoDatabase: true,
   useMessageDatabase: true,
-  // optional zusätzlich:
   tdlibParameters: {
     api_id: API_ID,
     api_hash: API_HASH,
@@ -67,10 +52,8 @@ const client = new Client({
   }
 });
 
-
 await client.connect();
 console.log("✅ TDLib gestartet.");
-
 
 // Login State Management
 let resolvePhone = null;

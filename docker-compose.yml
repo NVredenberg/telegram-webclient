@@ -11,11 +11,9 @@ services:
       - PHONE_NUMBER=${PHONE_NUMBER}
       - PORT=1993
       - CORS_ORIGIN=*
-      - LD_LIBRARY_PATH=/app/tdlib 
     volumes:
       - ./backend/session_data:/app/session_data
       - ./backend/uploads:/app/uploads
-      - ./backend/tdlib:/app/tdlib:ro
     ports:
       - "1993:1993"
     restart: unless-stopped

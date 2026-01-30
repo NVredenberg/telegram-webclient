@@ -2,7 +2,7 @@ FROM node:18-bullseye
 
 WORKDIR /app
 
-# Build-Dependencies für native Module
+# Build-Dependencies für native Module (falls benötigt)
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -10,10 +10,11 @@ RUN apt-get update && apt-get install -y \
     git \
  && rm -rf /var/lib/apt/lists/*
 
-# Manifest(e) zuerst, damit Layer-Caching funktioniert
+# Package-Dateien zuerst für Layer-Caching
 COPY package*.json ./
 
-# Install (mit deinen Retries)
+# NPM Install mit Retries
+# tdl 7.4.1 lädt prebuilt TDLib-Binaries automatisch herunter!
 RUN npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000 && \
     npm config set fetch-retries 5 && \
@@ -21,19 +22,17 @@ RUN npm config set fetch-retry-mintimeout 20000 && \
     (sleep 10 && npm install --omit=dev) || \
     (sleep 20 && npm install --omit=dev)
 
-# App-Code und TDLib-Pfad
+# App-Code kopieren
 COPY server.js ./server.js
-COPY tdlib ./tdlib
 
-# TDLib für den Loader bekannt machen (wichtig für Addon)
-ENV LD_LIBRARY_PATH=/app/tdlib 
-
-# Verzeichnisse, Healthcheck, User
+# Verzeichnisse erstellen
 RUN mkdir -p /app/session_data /app/uploads
 
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:1993/auth/status', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
 
+# User für Sicherheit (optional, aber empfohlen)
 RUN groupadd -r telegram && useradd -r -g telegram telegram && \
     chown -R telegram:telegram /app
 USER telegram

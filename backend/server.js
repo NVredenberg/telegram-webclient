@@ -30,30 +30,23 @@ const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
-console.log(`[BOOT] API_ID(parsed)=${API_ID} (type=${typeof API_ID}), API_HASH[0..5]=${(API_HASH||'').slice(0,6)}...`);
+console.log(`[BOOT] API_ID=${API_ID}, API_HASH[0..5]=${API_HASH.slice(0,6)}...`);
 
 // TDLib Client initialisieren
-// tdl 7.4.1 lädt prebuilt binaries automatisch herunter - KEINE manuelle Konfiguration nötig!
+// WICHTIG: tdl 7.x nutzt camelCase Properties: apiId, apiHash
 const client = new Client({
-  apiId: API_ID,
-  apiHash: API_HASH,
+  apiId: API_ID,        // muss camelCase sein!
+  apiHash: API_HASH,    // muss camelCase sein!
   databaseDirectory: "/app/session_data",
   filesDirectory: "/app/session_data/files",
   useFileDatabase: true,
   useChatInfoDatabase: true,
-  useMessageDatabase: true,
-  tdlibParameters: {
-    api_id: API_ID,
-    api_hash: API_HASH,
-    system_language_code: "en",
-    device_model: "server",
-    application_version: "1.0",
-    enable_storage_optimizer: true
-  }
+  useMessageDatabase: true
 });
 
+console.log("🔄 Verbinde zu TDLib...");
 await client.connect();
-console.log("✅ TDLib gestartet.");
+console.log("✅ TDLib verbunden!");
 
 // Login State Management
 let resolvePhone = null;

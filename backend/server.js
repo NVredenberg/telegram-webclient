@@ -34,14 +34,32 @@ console.log(`[BOOT] API_ID=${API_ID}, API_HASH[0..5]=${API_HASH.slice(0,6)}...`)
 
 // TDLib Client initialisieren
 // tdl 7.4.1 lädt prebuilt binaries automatisch herunter!
+// TDLib Client initialisieren
 const client = new Client({
+  // Belasse die Top‑Level-Felder (einige tdl‑Versionen erwarten sie)
   apiId: API_ID,
   apiHash: API_HASH,
-  databaseDirectory: "/app/session_data",
-  filesDirectory: "/app/session_data/files",
-  useFileDatabase: true,
-  useChatInfoDatabase: true,
-  useMessageDatabase: true
+
+  // Packe alle TDLib-Parameter zusätzlich (und in snake_case) hier hinein:
+  tdlibParameters: {
+    api_id: API_ID,
+    api_hash: API_HASH,
+    database_directory: '/app/session_data',
+    files_directory: '/app/session_data/files',
+
+    // Die folgenden Flags gehören in tdlibParameters, snake_case:
+    use_file_database: true,
+    use_chat_info_database: true,
+    use_message_database: true,
+
+    // sinnvolle Defaults (kannst du anpassen)
+    system_language_code: 'en',
+    device_model: 'server',
+    system_version: '1.0',
+    application_version: '1.0',
+    enable_storage_optimizer: true,
+    ignore_file_names: false
+  }
 });
 
 console.log("🔄 Verbinde zu TDLib...");

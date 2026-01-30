@@ -33,10 +33,10 @@ app.use(express.json());
 console.log(`[BOOT] API_ID=${API_ID}, API_HASH[0..5]=${API_HASH.slice(0,6)}...`);
 
 // TDLib Client initialisieren
-// WICHTIG: tdl 7.x nutzt camelCase Properties: apiId, apiHash
+// tdl 7.4.1 lädt prebuilt binaries automatisch herunter!
 const client = new Client({
-  apiId: API_ID,        // muss camelCase sein!
-  apiHash: API_HASH,    // muss camelCase sein!
+  apiId: API_ID,
+  apiHash: API_HASH,
   databaseDirectory: "/app/session_data",
   filesDirectory: "/app/session_data/files",
   useFileDatabase: true,

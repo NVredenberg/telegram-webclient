@@ -5,6 +5,10 @@ import { WebSocketServer } from "ws";
 import { Client } from "tdl"; 
 import fs from "node:fs";
 
+import tdl from 'tdl';
+import { getTdjson } from 'prebuilt-tdlib';
+
+
 // Konfiguration aus Umgebungsvariablen
 const rawApiId = process.env.API_ID ?? '';
 const API_ID = parseInt(String(rawApiId).trim().replace(/^"+|"+$/g, ''), 10);
@@ -32,27 +36,22 @@ app.use(express.json());
 
 console.log(`[BOOT] API_ID=${API_ID}, API_HASH[0..5]=${API_HASH.slice(0,6)}...`);
 
-// TDLib Client initialisieren
-// tdl 7.4.1 lädt prebuilt binaries automatisch herunter!
-// TDLib Client initialisieren
-const client = new Client({
-  // Belasse die Top‑Level-Felder (einige tdl‑Versionen erwarten sie)
-  apiId: API_ID,
-  apiHash: API_HASH,
+tdl.configure({ tdjson: getTdjson() });
 
-  // Packe alle TDLib-Parameter zusätzlich (und in snake_case) hier hinein:
+
+// TDLib Client initialisieren (7.x-/8.x-Stil)
+const client = tdl.createClient({
+  apiId: API_ID,            // number (du castest weiter oben korrekt)
+  apiHash: API_HASH,        // string
+
   tdlibParameters: {
     api_id: API_ID,
     api_hash: API_HASH,
     database_directory: '/app/session_data',
     files_directory: '/app/session_data/files',
-
-    // Die folgenden Flags gehören in tdlibParameters, snake_case:
     use_file_database: true,
     use_chat_info_database: true,
     use_message_database: true,
-
-    // sinnvolle Defaults (kannst du anpassen)
     system_language_code: 'en',
     device_model: 'server',
     system_version: '1.0',
@@ -61,6 +60,7 @@ const client = new Client({
     ignore_file_names: false
   }
 });
+
 
 console.log("🔄 Verbinde zu TDLib...");
 await client.connect();

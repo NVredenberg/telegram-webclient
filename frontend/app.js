@@ -13,15 +13,28 @@ let reconnectTimer = null;
 
 async function checkAuth() {
   try {
+    console.log("🔍 Prüfe Auth-Status...");
     const r = await fetch(API + "/auth/status");
     const j = await r.json();
+    console.log("Auth-Status:", j);
+    
     if (j.authenticated) {
+      console.log("✅ Bereits authentifiziert");
       startApp();
     } else {
-      await fetch(API + "/auth/start", { method: "POST" });
-      showStep("phone");
+      console.log("❌ Nicht authentifiziert, starte Login...");
+      const startResp = await fetch(API + "/auth/start", { method: "POST" });
+      const startJson = await startResp.json();
+      console.log("Login-Start Antwort:", startJson);
+      
+      if (startJson.next === "done") {
+        startApp();
+      } else {
+        showStep("phone");
+      }
     }
   } catch (error) {
+    console.error("Fehler bei checkAuth:", error);
     showError("Verbindung zum Server fehlgeschlagen: " + error.message);
   }
 }
@@ -33,19 +46,27 @@ async function sendPhone() {
     return;
   }
 
+  console.log("📱 Sende Telefonnummer:", phone);
+  
   try {
     const r = await fetch(API + "/auth/phone", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone })
     });
+    
     const j = await r.json();
+    console.log("Phone Response:", j);
+    
     if (j.ok) {
+      console.log("✅ Telefonnummer akzeptiert");
       showStep("code");
     } else {
+      console.error("❌ Telefonnummer abgelehnt:", j.error);
       showError(j.error || "Fehler beim Senden der Telefonnummer");
     }
   } catch (error) {
+    console.error("Fehler bei sendPhone:", error);
     showError("Verbindungsfehler: " + error.message);
   }
 }
@@ -57,30 +78,36 @@ async function sendCode() {
     return;
   }
 
+  console.log("🔑 Sende Code:", code);
+
   try {
     const r = await fetch(API + "/auth/code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code })
     });
+    
     const j = await r.json();
+    console.log("Code Response:", j);
+    
     if (j.ok) {
+      console.log("✅ Code akzeptiert");
       showStep("password");
       setTimeout(checkAuth, 1500);
     } else {
+      console.error("❌ Code abgelehnt:", j.error);
       showError(j.error || "Ungültiger Code");
     }
   } catch (error) {
+    console.error("Fehler bei sendCode:", error);
     showError("Verbindungsfehler: " + error.message);
   }
 }
 
 async function sendPassword() {
   const password = document.getElementById("password").value;
-  if (!password) {
-    showError("Bitte Passwort eingeben");
-    return;
-  }
+  
+  console.log("🔐 Sende Passwort");
 
   try {
     const r = await fetch(API + "/auth/password", {
@@ -88,18 +115,25 @@ async function sendPassword() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password })
     });
+    
     const j = await r.json();
+    console.log("Password Response:", j);
+    
     if (j.ok) {
+      console.log("✅ Passwort akzeptiert");
       setTimeout(checkAuth, 1500);
     } else {
+      console.error("❌ Passwort abgelehnt:", j.error);
       showError(j.error || "Ungültiges Passwort");
     }
   } catch (error) {
+    console.error("Fehler bei sendPassword:", error);
     showError("Verbindungsfehler: " + error.message);
   }
 }
 
 function showStep(step) {
+  console.log("👉 Zeige Login-Schritt:", step);
   for (const el of document.querySelectorAll(".login-step")) {
     el.classList.add("hidden");
   }
@@ -108,12 +142,14 @@ function showStep(step) {
 }
 
 function startApp() {
+  console.log("🚀 Starte App...");
   document.getElementById("login").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
   initApp();
 }
 
 function showError(msg) {
+  console.error("❌ Fehler:", msg);
   alert("❌ " + msg);
 }
 
@@ -124,6 +160,7 @@ function initApp() {
 }
 
 function connectWebSocket() {
+  console.log("🔌 Verbinde WebSocket...");
   ws = new WebSocket("ws://" + location.hostname + ":1993");
   
   ws.onopen = () => {
@@ -469,4 +506,5 @@ window.addEventListener("beforeunload", () => {
 });
 
 // Initial Check
+console.log("🎯 App startet...");
 checkAuth();

@@ -71,12 +71,14 @@ let resolvePhone = null;
 let resolveCode = null;
 let resolvePassword = null;
 let loginTimeout = null;
+let loginInProgress = false;
 
 function clearLoginState() {
   if (loginTimeout) clearTimeout(loginTimeout);
   resolvePhone = null;
   resolveCode = null;
   resolvePassword = null;
+  loginInProgress = false;
 }
 
 // REST: Auth Status
@@ -96,11 +98,21 @@ app.post("/auth/start", async (req, res) => {
     if (me) return res.json({ next: "done", me });
   } catch {}
 
+  if (loginInProgress) {
+    return res.json({ next: "phone", message: "Login bereits gestartet" });
+  }
+
   clearLoginState();
+  loginInProgress = true;
+  
+  // Starte Login-Prozess asynchron
   startLogin().catch(err => {
     console.error("❌ Login error:", err);
     clearLoginState();
   });
+  
+  // Warte kurz, damit startLogin() die Promise-Handler initialisieren kann
+  await new Promise(resolve => setTimeout(resolve, 200));
   
   res.json({ next: "phone" });
 });
@@ -113,13 +125,18 @@ app.post("/auth/phone", (req, res) => {
     return res.status(400).json({ ok: false, error: "Ungültige Telefonnummer" });
   }
 
-  if (resolvePhone) {
-    resolvePhone(phone);
-    resolvePhone = null;
-    return res.json({ ok: true, next: "code" });
+  if (!resolvePhone) {
+    return res.status(400).json({ 
+      ok: false, 
+      error: "Kein aktiver Login-Prozess. Bitte /auth/start zuerst aufrufen." 
+    });
   }
+
+  console.log(`📱 Telefonnummer erhalten: ${phone}`);
+  resolvePhone(phone);
+  resolvePhone = null;
   
-  res.status(400).json({ ok: false, error: "Kein aktiver Login-Prozess" });
+  res.json({ ok: true, next: "code" });
 });
 
 // REST: Code
@@ -130,13 +147,18 @@ app.post("/auth/code", (req, res) => {
     return res.status(400).json({ ok: false, error: "Ungültiger Code" });
   }
 
-  if (resolveCode) {
-    resolveCode(code);
-    resolveCode = null;
-    return res.json({ ok: true, next: "maybe_password" });
+  if (!resolveCode) {
+    return res.status(400).json({ 
+      ok: false, 
+      error: "Kein aktiver Code-Schritt" 
+    });
   }
+
+  console.log(`🔑 Code erhalten: ${code}`);
+  resolveCode(code);
+  resolveCode = null;
   
-  res.status(400).json({ ok: false, error: "Kein aktiver Login-Prozess" });
+  res.json({ ok: true, next: "maybe_password" });
 });
 
 // REST: Password (2FA)
@@ -147,45 +169,59 @@ app.post("/auth/password", (req, res) => {
     return res.status(400).json({ ok: false, error: "Ungültiges Passwort" });
   }
 
-  if (resolvePassword) {
-    resolvePassword(password);
-    resolvePassword = null;
-    return res.json({ ok: true, next: "done" });
+  if (!resolvePassword) {
+    return res.status(400).json({ 
+      ok: false, 
+      error: "Kein aktiver Password-Schritt" 
+    });
   }
+
+  console.log(`🔐 Passwort erhalten`);
+  resolvePassword(password);
+  resolvePassword = null;
   
-  res.status(400).json({ ok: false, error: "Kein aktiver Login-Prozess" });
+  res.json({ ok: true, next: "done" });
 });
 
 // Login Orchestrierung mit Timeout
 async function startLogin() {
   try {
+    console.log("🚀 Starte Login-Prozess...");
+    
     await client.login(() => ({
       type: "user",
       getPhoneNumber: () =>
         new Promise((resolve, reject) => {
+          console.log("📞 Warte auf Telefonnummer...");
           resolvePhone = resolve;
           loginTimeout = setTimeout(() => {
+            console.error("⏱️ Phone timeout");
             reject(new Error("Phone timeout"));
             clearLoginState();
           }, 300000); // 5 Minuten
           
           if (PHONE_NUMBER_DEFAULT) {
+            console.log(`📱 Verwende Standard-Telefonnummer`);
             resolve(PHONE_NUMBER_DEFAULT);
-            clearLoginState();
+            clearTimeout(loginTimeout);
           }
         }),
       getAuthCode: () =>
         new Promise((resolve, reject) => {
+          console.log("🔢 Warte auf Auth-Code...");
           resolveCode = resolve;
           loginTimeout = setTimeout(() => {
+            console.error("⏱️ Code timeout");
             reject(new Error("Code timeout"));
             clearLoginState();
           }, 300000);
         }),
       getPassword: () =>
         new Promise((resolve, reject) => {
+          console.log("🔒 Warte auf 2FA-Passwort...");
           resolvePassword = resolve;
           loginTimeout = setTimeout(() => {
+            console.error("⏱️ Password timeout");
             reject(new Error("Password timeout"));
             clearLoginState();
           }, 300000);
@@ -193,7 +229,7 @@ async function startLogin() {
     }));
 
     clearLoginState();
-    console.log("✅ Login abgeschlossen.");
+    console.log("✅ Login erfolgreich abgeschlossen!");
   } catch (error) {
     console.error("❌ Login fehlgeschlagen:", error);
     clearLoginState();

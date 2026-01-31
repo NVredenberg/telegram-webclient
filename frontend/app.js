@@ -166,7 +166,11 @@ function connectWebSocket() {
   ws.onopen = () => {
     console.log("✅ WebSocket verbunden");
     reconnectAttempts = 0;
-    invoke({ "@type": "getChats", "limit": 50 }).then(fillChatList).catch(console.error);
+    
+    // Warte kurz auf Synchronisation und lade dann Chats
+    setTimeout(() => {
+      loadChats();
+    }, 1000);
   };
   
   ws.onmessage = (ev) => {
@@ -237,33 +241,98 @@ function invoke(obj) {
   });
 }
 
+async function loadChats() {
+  const ul = document.getElementById("chat-list");
+  ul.innerHTML = "<li>Lade Chats...</li>";
+  
+  console.log("📋 Lade Chat-Liste...");
+  
+  try {
+    // Hole die Chat-Liste
+    const result = await invoke({ "@type": "getChats", "limit": 100 });
+    console.log("📋 getChats Antwort:", result);
+    
+    await fillChatList(result);
+  } catch (e) {
+    console.error("❌ Fehler beim Laden der Chats:", e);
+    ul.innerHTML = "<li style='color: #e85d75;'>Fehler beim Laden: " + e.message + "</li>";
+    
+    // Retry nach 3 Sekunden
+    setTimeout(() => {
+      console.log("🔄 Versuche Chats erneut zu laden...");
+      loadChats();
+    }, 3000);
+  }
+}
+
 async function fillChatList(result) {
   const ul = document.getElementById("chat-list");
   ul.innerHTML = "";
   
-  if (result.chat_ids && result.chat_ids.length > 0) {
-    for (const id of result.chat_ids) {
-      try {
-        const chat = await invoke({ "@type": "getChat", "chat_id": id });
-        chatMap.set(id, chat);
-        
-        const li = document.createElement("li");
-        li.textContent = chat.title || ("Chat " + id);
-        li.onclick = () => openChat(id);
-        ul.appendChild(li);
-      } catch (e) {
-        console.error("Fehler beim Laden von Chat", id, e);
-      }
-    }
-  } else {
+  console.log("📋 Chat IDs erhalten:", result.chat_ids);
+  
+  if (!result.chat_ids || result.chat_ids.length === 0) {
     ul.innerHTML = "<li>Keine Chats gefunden</li>";
+    console.warn("⚠️ Keine Chats vorhanden. Möglicherweise noch keine Nachrichten erhalten?");
+    
+    // Zeige Hinweis
+    ul.innerHTML = "<li style='padding: 1rem; color: #6b7985;'>Noch keine Chats vorhanden.<br>Schreiben Sie sich selbst eine Nachricht oder warten Sie auf eingehende Nachrichten.</li>";
+    return;
   }
+  
+  console.log(`📋 Lade Details für ${result.chat_ids.length} Chats...`);
+  
+  for (const id of result.chat_ids) {
+    try {
+      console.log(`📋 Lade Chat ${id}...`);
+      const chat = await invoke({ "@type": "getChat", "chat_id": id });
+      console.log(`📋 Chat ${id} Details:`, chat);
+      
+      chatMap.set(id, chat);
+      
+      const li = document.createElement("li");
+      
+      // Chat-Titel und letzter Nachrichtentext
+      const title = chat.title || "Chat " + id;
+      const lastMessage = chat.last_message ? 
+        (chat.last_message.content.text?.text || "[" + chat.last_message.content["@type"] + "]") : 
+        "Keine Nachrichten";
+      
+      li.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(title)}</div>
+        <div style="font-size: 0.875rem; color: #6b7985; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          ${escapeHtml(lastMessage)}
+        </div>
+      `;
+      
+      li.onclick = () => openChat(id);
+      ul.appendChild(li);
+      
+      console.log(`✅ Chat ${id} (${title}) hinzugefügt`);
+    } catch (e) {
+      console.error("❌ Fehler beim Laden von Chat", id, e);
+      const li = document.createElement("li");
+      li.textContent = "Chat " + id + " (Fehler)";
+      li.style.color = "#e85d75";
+      ul.appendChild(li);
+    }
+  }
+  
+  console.log(`✅ ${chatMap.size} Chats geladen`);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 async function openChat(chatId) {
   currentChatId = chatId;
   const messagesBox = document.getElementById("messages");
   messagesBox.innerHTML = "<div class='loading'>Lade Nachrichten...</div>";
+  
+  console.log(`💬 Öffne Chat ${chatId}...`);
   
   try {
     const hist = await invoke({
@@ -274,8 +343,11 @@ async function openChat(chatId) {
       "limit": 50,
       "only_local": false
     });
+    
+    console.log(`💬 Chat ${chatId} Historie:`, hist);
     await renderMessages(hist.messages || []);
   } catch (e) {
+    console.error(`❌ Fehler beim Laden von Chat ${chatId}:`, e);
     messagesBox.innerHTML = "<div class='error'>Fehler beim Laden: " + e.message + "</div>";
   }
 }
@@ -284,8 +356,15 @@ async function renderMessages(msgs) {
   const box = document.getElementById("messages");
   box.innerHTML = "";
   
+  if (msgs.length === 0) {
+    box.innerHTML = "<div class='loading'>Noch keine Nachrichten in diesem Chat</div>";
+    return;
+  }
+  
   const reversed = msgs.reverse();
   const limited = reversed.slice(-MAX_MESSAGES); // Nur letzte N Nachrichten
+  
+  console.log(`💬 Rendere ${limited.length} Nachrichten...`);
   
   for (const m of limited) {
     const node = await messageToDom(m);
@@ -389,13 +468,27 @@ async function resolveDocumentFile(fileId) {
 }
 
 function handleUpdate(update) {
+  console.log("📨 Update erhalten:", update["@type"]);
+  
   if (update['@type'] === 'updateNewMessage') {
+    console.log("💬 Neue Nachricht:", update.message);
+    
+    // Chat-Liste aktualisieren wenn neue Nachricht
+    if (!chatMap.has(update.message.chat_id)) {
+      console.log("📋 Neuer Chat entdeckt, lade Chat-Liste neu...");
+      loadChats();
+    }
+    
+    // Nachricht anzeigen wenn Chat geöffnet
     if (update.message.chat_id === currentChatId) {
       appendMessage(update.message);
     }
   } else if (update['@type'] === 'updateFile') {
     // Datei wurde heruntergeladen - UI aktualisieren
     handleFileUpdate(update.file);
+  } else if (update['@type'] === 'updateNewChat') {
+    console.log("📋 Neuer Chat:", update.chat);
+    loadChats(); // Chatliste neu laden
   }
 }
 

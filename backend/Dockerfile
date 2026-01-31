@@ -1,13 +1,12 @@
-# ./backend/Dockerfile
 FROM node:18-bullseye
 
 WORKDIR /app
 
 # package.json + lockfile zuerst kopieren (Cache-freundlich)
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json* ./
 
 # reproduzierbarer Prod-Install
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev || npm install --omit=dev
 
 # Restliche App-Dateien
 COPY . .

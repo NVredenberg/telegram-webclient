@@ -1,0 +1,8 @@
+# Verhindert dass diese Verzeichnisse in den Build-Context kopiert werden
+node_modules
+session_data
+uploads
+npm-debug.log
+.env
+.env.local
+*.log

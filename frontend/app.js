@@ -229,13 +229,13 @@ function invoke(obj) {
     const reqId = requestId++;
     pendingRequests.set(reqId, { resolve, reject });
     
-    // Timeout für Request
+    // Längerer Timeout für initiale Synchronisation (60 Sekunden)
     setTimeout(() => {
       if (pendingRequests.has(reqId)) {
         pendingRequests.delete(reqId);
         reject(new Error("Request timeout"));
       }
-    }, 30000);
+    }, 60000);
 
     ws.send(JSON.stringify({ ...obj, requestId: reqId }));
   });
@@ -354,23 +354,39 @@ async function openChat(chatId) {
 
 async function renderMessages(msgs) {
   const box = document.getElementById("messages");
+  
+  if (!box) {
+    console.error("❌ Messages-Container nicht gefunden!");
+    return;
+  }
+  
   box.innerHTML = "";
   
-  if (msgs.length === 0) {
+  if (!msgs || msgs.length === 0) {
     box.innerHTML = "<div class='loading'>Noch keine Nachrichten in diesem Chat</div>";
+    console.log("⚠️ Keine Nachrichten vorhanden");
     return;
   }
   
   const reversed = msgs.reverse();
-  const limited = reversed.slice(-MAX_MESSAGES); // Nur letzte N Nachrichten
+  const limited = reversed.slice(-MAX_MESSAGES);
   
   console.log(`💬 Rendere ${limited.length} Nachrichten...`);
+  console.log("💬 Nachrichten-Array:", limited);
   
-  for (const m of limited) {
-    const node = await messageToDom(m);
-    box.appendChild(node);
+  for (let i = 0; i < limited.length; i++) {
+    const m = limited[i];
+    try {
+      console.log(`💬 Rendere Nachricht ${i + 1}/${limited.length}:`, m.id);
+      const node = await messageToDom(m);
+      box.appendChild(node);
+      console.log(`✅ Nachricht ${m.id} hinzugefügt`);
+    } catch (error) {
+      console.error(`❌ Fehler beim Rendern von Nachricht ${m.id}:`, error);
+    }
   }
   
+  console.log(`✅ ${box.children.length} Nachrichten im DOM`);
   box.scrollTop = box.scrollHeight;
 }
 
@@ -392,37 +408,55 @@ async function messageToDom(m) {
   div.className = (m.is_outgoing ? "msg me" : "msg other");
   div.dataset.messageId = m.id;
 
-  if (m.content["@type"] === "messageText") {
-    div.textContent = m.content.text.text;
-  } else if (m.content["@type"] === "messagePhoto") {
-    const url = await resolvePhotoFile(m.content.photo);
-    if (url) {
-      const img = document.createElement("img");
-      img.src = url;
-      img.className = "photo";
-      img.alt = "Foto";
-      div.appendChild(img);
-    } else {
-      div.textContent = "[Foto wird geladen…]";
-      div.dataset.photoId = m.content.photo.sizes[m.content.photo.sizes.length - 1]?.photo.id;
+  console.log("📝 Rendere Nachricht:", m.id, "Type:", m.content?.["@type"]);
+
+  try {
+    if (!m.content) {
+      div.textContent = "[Leere Nachricht]";
+      return div;
     }
-  } else if (m.content["@type"] === "messageDocument") {
-    const name = m.content.document.file_name || "Dokument";
-    const link = document.createElement("a");
-    link.textContent = "📎 " + name;
-    link.target = "_blank";
-    div.appendChild(link);
-    
-    const fileId = m.content.document.document.id;
-    const url = await resolveDocumentFile(fileId);
-    if (url) {
-      link.href = url;
+
+    const contentType = m.content["@type"];
+
+    if (contentType === "messageText") {
+      const text = m.content.text?.text || "[Kein Text]";
+      div.textContent = text;
+      console.log("📝 Text-Nachricht:", text.substring(0, 50));
+    } else if (contentType === "messagePhoto") {
+      const url = await resolvePhotoFile(m.content.photo);
+      if (url) {
+        const img = document.createElement("img");
+        img.src = url;
+        img.className = "photo";
+        img.alt = "Foto";
+        div.appendChild(img);
+      } else {
+        div.textContent = "[Foto wird geladen…]";
+        div.dataset.photoId = m.content.photo.sizes[m.content.photo.sizes.length - 1]?.photo.id;
+      }
+    } else if (contentType === "messageDocument") {
+      const name = m.content.document.file_name || "Dokument";
+      const link = document.createElement("a");
+      link.textContent = "📎 " + name;
+      link.target = "_blank";
+      div.appendChild(link);
+      
+      const fileId = m.content.document.document.id;
+      const url = await resolveDocumentFile(fileId);
+      if (url) {
+        link.href = url;
+      } else {
+        link.textContent = "📎 (wird geladen…) " + name;
+        div.dataset.documentId = fileId;
+      }
     } else {
-      link.textContent = "📎 (wird geladen…) " + name;
-      div.dataset.documentId = fileId;
+      // Fallback für unbekannte Nachrichtentypen
+      div.textContent = "[" + contentType + "]";
+      console.log("⚠️ Unbekannter Nachrichtentyp:", contentType);
     }
-  } else {
-    div.textContent = "[" + m.content["@type"] + "]";
+  } catch (error) {
+    console.error("❌ Fehler beim Rendern von Nachricht", m.id, error);
+    div.textContent = "[Fehler beim Laden]";
   }
   
   return div;
@@ -468,9 +502,21 @@ async function resolveDocumentFile(fileId) {
 }
 
 function handleUpdate(update) {
-  console.log("📨 Update erhalten:", update["@type"]);
+  // Prüfe ob update valid ist
+  if (!update || typeof update !== 'object') {
+    console.warn("⚠️ Ungültiges Update erhalten:", update);
+    return;
+  }
   
-  if (update['@type'] === 'updateNewMessage') {
+  const updateType = update["@type"];
+  console.log("📨 Update erhalten:", updateType || "unknown");
+  
+  if (!updateType) {
+    console.warn("⚠️ Update ohne @type:", update);
+    return;
+  }
+  
+  if (updateType === 'updateNewMessage') {
     console.log("💬 Neue Nachricht:", update.message);
     
     // Chat-Liste aktualisieren wenn neue Nachricht
@@ -483,10 +529,10 @@ function handleUpdate(update) {
     if (update.message.chat_id === currentChatId) {
       appendMessage(update.message);
     }
-  } else if (update['@type'] === 'updateFile') {
+  } else if (updateType === 'updateFile') {
     // Datei wurde heruntergeladen - UI aktualisieren
     handleFileUpdate(update.file);
-  } else if (update['@type'] === 'updateNewChat') {
+  } else if (updateType === 'updateNewChat') {
     console.log("📋 Neuer Chat:", update.chat);
     loadChats(); // Chatliste neu laden
   }

@@ -408,15 +408,15 @@ async function messageToDom(m) {
   div.className = (m.is_outgoing ? "msg me" : "msg other");
   div.dataset.messageId = m.id;
 
-  console.log("📝 Rendere Nachricht:", m.id, "Type:", m.content?.["@type"]);
+  // TDLib verwendet sowohl @type als auch _ als Feldnamen
+  const contentType = m.content?.["@type"] || m.content?.["_"];
+  console.log("📝 Rendere Nachricht:", m.id, "Type:", contentType, "Content:", m.content);
 
   try {
     if (!m.content) {
       div.textContent = "[Leere Nachricht]";
       return div;
     }
-
-    const contentType = m.content["@type"];
 
     if (contentType === "messageText") {
       const text = m.content.text?.text || "[Kein Text]";
@@ -432,27 +432,32 @@ async function messageToDom(m) {
         div.appendChild(img);
       } else {
         div.textContent = "[Foto wird geladen…]";
-        div.dataset.photoId = m.content.photo.sizes[m.content.photo.sizes.length - 1]?.photo.id;
+        const sizes = m.content.photo?.sizes;
+        if (sizes && sizes.length > 0) {
+          div.dataset.photoId = sizes[sizes.length - 1]?.photo?.id;
+        }
       }
     } else if (contentType === "messageDocument") {
-      const name = m.content.document.file_name || "Dokument";
+      const name = m.content.document?.file_name || "Dokument";
       const link = document.createElement("a");
       link.textContent = "📎 " + name;
       link.target = "_blank";
       div.appendChild(link);
       
-      const fileId = m.content.document.document.id;
-      const url = await resolveDocumentFile(fileId);
-      if (url) {
-        link.href = url;
-      } else {
-        link.textContent = "📎 (wird geladen…) " + name;
-        div.dataset.documentId = fileId;
+      const fileId = m.content.document?.document?.id;
+      if (fileId) {
+        const url = await resolveDocumentFile(fileId);
+        if (url) {
+          link.href = url;
+        } else {
+          link.textContent = "📎 (wird geladen…) " + name;
+          div.dataset.documentId = fileId;
+        }
       }
     } else {
       // Fallback für unbekannte Nachrichtentypen
-      div.textContent = "[" + contentType + "]";
-      console.log("⚠️ Unbekannter Nachrichtentyp:", contentType);
+      div.textContent = "[" + (contentType || "unknown") + "]";
+      console.warn("⚠️ Unbekannter Nachrichtentyp:", contentType, m.content);
     }
   } catch (error) {
     console.error("❌ Fehler beim Rendern von Nachricht", m.id, error);
@@ -508,11 +513,12 @@ function handleUpdate(update) {
     return;
   }
   
-  const updateType = update["@type"];
+  // TDLib verwendet sowohl @type als auch _
+  const updateType = update["@type"] || update["_"];
   console.log("📨 Update erhalten:", updateType || "unknown");
   
   if (!updateType) {
-    console.warn("⚠️ Update ohne @type:", update);
+    console.warn("⚠️ Update ohne @type/_:", update);
     return;
   }
   

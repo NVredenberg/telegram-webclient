@@ -167,10 +167,8 @@ function connectWebSocket() {
     console.log("✅ WebSocket verbunden");
     reconnectAttempts = 0;
     
-    // Warte kurz auf Synchronisation und lade dann Chats
-    setTimeout(() => {
-      loadChats();
-    }, 1000);
+    // Sofort laden statt zu warten - TDLib ist meist schon synchronisiert nach Login
+    loadChats();
   };
   
   ws.onmessage = (ev) => {
@@ -291,11 +289,12 @@ async function fillChatList(result) {
       chatMap.set(id, chat);
       
       const li = document.createElement("li");
+      li.dataset.chatId = id; // WICHTIG: Für schnelles Finden bei Updates
       
       // Chat-Titel und letzter Nachrichtentext
       const title = chat.title || "Chat " + id;
       const lastMessage = chat.last_message ? 
-        (chat.last_message.content.text?.text || "[" + chat.last_message.content["@type"] + "]") : 
+        (chat.last_message.content?.text?.text || chat.last_message.content?._ || "[Nachricht]") : 
         "Keine Nachrichten";
       
       li.innerHTML = `
@@ -515,32 +514,94 @@ function handleUpdate(update) {
   
   // TDLib verwendet sowohl @type als auch _
   const updateType = update["@type"] || update["_"];
-  console.log("📨 Update erhalten:", updateType || "unknown");
   
   if (!updateType) {
     console.warn("⚠️ Update ohne @type/_:", update);
     return;
   }
   
+  console.log("📨 Update:", updateType);
+  
   if (updateType === 'updateNewMessage') {
-    console.log("💬 Neue Nachricht:", update.message);
+    console.log("💬 Neue Nachricht in Chat:", update.message.chat_id);
     
-    // Chat-Liste aktualisieren wenn neue Nachricht
-    if (!chatMap.has(update.message.chat_id)) {
-      console.log("📋 Neuer Chat entdeckt, lade Chat-Liste neu...");
-      loadChats();
-    }
+    const chatId = update.message.chat_id;
     
     // Nachricht anzeigen wenn Chat geöffnet
-    if (update.message.chat_id === currentChatId) {
+    if (chatId === currentChatId) {
       appendMessage(update.message);
     }
+    
+    // Chat-Liste-Item aktualisieren (schnell, ohne komplettes Neuladen)
+    updateChatListItem(chatId, update.message);
+    
   } else if (updateType === 'updateFile') {
     // Datei wurde heruntergeladen - UI aktualisieren
     handleFileUpdate(update.file);
   } else if (updateType === 'updateNewChat') {
     console.log("📋 Neuer Chat:", update.chat);
-    loadChats(); // Chatliste neu laden
+    // Nur bei komplett neuem Chat die Liste neu laden
+    loadChats();
+  } else if (updateType === 'updateChatLastMessage') {
+    console.log("📋 Chat LastMessage Update:", update.chat_id);
+    // Letzte Nachricht hat sich geändert - Chat-Item aktualisieren
+    updateChatListItem(update.chat_id, update.last_message);
+  }
+}
+
+// Aktualisiert nur ein Chat-Listen-Item (schnell!)
+async function updateChatListItem(chatId, lastMessage) {
+  try {
+    // Prüfe ob Chat bereits in der Liste ist
+    if (!chatMap.has(chatId)) {
+      console.log("📋 Neuer Chat entdeckt, lade komplett neu...");
+      loadChats();
+      return;
+    }
+    
+    // Hole aktuelle Chat-Daten
+    const chat = await invoke({ "@type": "getChat", "chat_id": chatId });
+    chatMap.set(chatId, chat);
+    
+    // Finde das entsprechende List-Item
+    const ul = document.getElementById("chat-list");
+    let listItem = null;
+    
+    for (let li of ul.children) {
+      if (li.dataset && li.dataset.chatId == chatId) {
+        listItem = li;
+        break;
+      }
+    }
+    
+    if (!listItem) {
+      console.log("📋 Chat-Item nicht gefunden, erstelle neu...");
+      // Chat ist neu oder wurde nicht gefunden - neu laden
+      loadChats();
+      return;
+    }
+    
+    // Aktualisiere den Inhalt
+    const title = chat.title || "Chat " + chatId;
+    const lastMsg = lastMessage || chat.last_message;
+    const lastMessageText = lastMsg ? 
+      (lastMsg.content?.text?.text || lastMsg.content?._ || "[Nachricht]") : 
+      "Keine Nachrichten";
+    
+    listItem.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(title)}</div>
+      <div style="font-size: 0.875rem; color: #6b7985; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        ${escapeHtml(lastMessageText)}
+      </div>
+    `;
+    
+    // Verschiebe an den Anfang der Liste (neueste oben)
+    ul.insertBefore(listItem, ul.firstChild);
+    
+    console.log("✅ Chat-Item aktualisiert:", chatId);
+    
+  } catch (error) {
+    console.error("❌ Fehler beim Aktualisieren von Chat-Item:", error);
   }
 }
 

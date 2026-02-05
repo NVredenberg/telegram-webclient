@@ -4,10 +4,12 @@ const MAX_MESSAGES = 100; // Limit für DOM-Performance
 let ws = null;
 let currentChatId = null;
 let chatMap = new Map();
+let contactsMap = new Map(); // NEU: Für Kontakte
 let pendingRequests = new Map();
 let requestId = 0;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
+let currentView = 'chats'; // NEU: 'chats' oder 'contacts'
 
 // === AUTH ===
 
@@ -246,8 +248,13 @@ async function loadChats() {
   console.log("📋 Lade Chat-Liste...");
   
   try {
-    // Hole die Chat-Liste
-    const result = await invoke({ "@type": "getChats", "limit": 100 });
+    // Hole die Chat-Liste mit größerem Limit
+    const result = await invoke({ 
+      "@type": "getChats", 
+      "limit": 50,
+      "offset_order": "9223372036854775807",
+      "offset_chat_id": 0
+    });
     console.log("📋 getChats Antwort:", result);
     
     await fillChatList(result);
@@ -280,41 +287,74 @@ async function fillChatList(result) {
   
   console.log(`📋 Lade Details für ${result.chat_ids.length} Chats...`);
   
-  for (const id of result.chat_ids) {
+  // Paralleles Laden für bessere Performance
+  const chatPromises = result.chat_ids.map(async (id) => {
     try {
       console.log(`📋 Lade Chat ${id}...`);
       const chat = await invoke({ "@type": "getChat", "chat_id": id });
-      console.log(`📋 Chat ${id} Details:`, chat);
-      
-      chatMap.set(id, chat);
-      
-      const li = document.createElement("li");
-      li.dataset.chatId = id; // WICHTIG: Für schnelles Finden bei Updates
-      
-      // Chat-Titel und letzter Nachrichtentext
-      const title = chat.title || "Chat " + id;
-      const lastMessage = chat.last_message ? 
-        (chat.last_message.content?.text?.text || chat.last_message.content?._ || "[Nachricht]") : 
-        "Keine Nachrichten";
-      
-      li.innerHTML = `
-        <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(title)}</div>
-        <div style="font-size: 0.875rem; color: #6b7985; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-          ${escapeHtml(lastMessage)}
-        </div>
-      `;
-      
-      li.onclick = () => openChat(id);
-      ul.appendChild(li);
-      
-      console.log(`✅ Chat ${id} (${title}) hinzugefügt`);
+      return { id, chat, success: true };
     } catch (e) {
       console.error("❌ Fehler beim Laden von Chat", id, e);
+      return { id, chat: null, success: false };
+    }
+  });
+  
+  // Warte auf alle Chats (parallel statt sequenziell!)
+  const results = await Promise.all(chatPromises);
+  
+  // Rendere alle Chats
+  for (const {id, chat, success} of results) {
+    if (!success || !chat) {
       const li = document.createElement("li");
       li.textContent = "Chat " + id + " (Fehler)";
       li.style.color = "#e85d75";
       ul.appendChild(li);
+      continue;
     }
+    
+    console.log(`📋 Chat ${id} Details:`, chat);
+    chatMap.set(id, chat);
+    
+    const li = document.createElement("li");
+    li.dataset.chatId = id;
+    
+    // Chat-Titel und letzter Nachrichtentext
+    const title = chat.title || "Chat " + id;
+    
+    // WICHTIG: Bessere Behandlung für verschiedene Content-Typen
+    let lastMessageText = "Keine Nachrichten";
+    if (chat.last_message) {
+      const content = chat.last_message.content;
+      const contentType = content?.["@type"] || content?.["_"];
+      
+      if (contentType === "messageText") {
+        lastMessageText = content.text?.text || "[Nachricht]";
+      } else if (contentType === "messagePhoto") {
+        lastMessageText = "📷 Foto";
+      } else if (contentType === "messageDocument") {
+        lastMessageText = "📎 " + (content.document?.file_name || "Dokument");
+      } else if (contentType === "messageVideo") {
+        lastMessageText = "🎥 Video";
+      } else if (contentType === "messageVoiceNote") {
+        lastMessageText = "🎤 Sprachnachricht";
+      } else if (contentType === "messageSticker") {
+        lastMessageText = "😊 Sticker";
+      } else {
+        lastMessageText = "[" + (contentType || "Nachricht") + "]";
+      }
+    }
+    
+    li.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(title)}</div>
+      <div style="font-size: 0.875rem; color: #6b7985; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        ${escapeHtml(lastMessageText)}
+      </div>
+    `;
+    
+    li.onclick = () => openChat(id);
+    ul.appendChild(li);
+    
+    console.log(`✅ Chat ${id} (${title}) hinzugefügt`);
   }
   
   console.log(`✅ ${chatMap.size} Chats geladen`);
@@ -714,3 +754,212 @@ window.addEventListener("beforeunload", () => {
 // Initial Check
 console.log("🎯 App startet...");
 checkAuth();
+
+// === KONTAKTE ===
+
+async function loadContacts() {
+  const ul = document.getElementById("chat-list");
+  ul.innerHTML = "<li>Lade Kontakte...</li>";
+  
+  console.log("👥 Lade Kontakte...");
+  
+  try {
+    const result = await invoke({ "@type": "getContacts" });
+    console.log("👥 Kontakte Antwort:", result);
+    
+    await fillContactsList(result);
+  } catch (e) {
+    console.error("❌ Fehler beim Laden der Kontakte:", e);
+    ul.innerHTML = "<li style='color: #e85d75;'>Fehler beim Laden: " + e.message + "</li>";
+  }
+}
+
+async function fillContactsList(result) {
+  const ul = document.getElementById("chat-list");
+  ul.innerHTML = "";
+  
+  if (!result.user_ids || result.user_ids.length === 0) {
+    ul.innerHTML = "<li style='padding: 1rem; color: #6b7985;'>Keine Kontakte gefunden.</li>";
+    return;
+  }
+  
+  console.log(`👥 Lade ${result.user_ids.length} Kontakte...`);
+  
+  // Paralleles Laden
+  const contactPromises = result.user_ids.map(async (userId) => {
+    try {
+      const user = await invoke({ "@type": "getUser", "user_id": userId });
+      return { userId, user, success: true };
+    } catch (e) {
+      console.error("❌ Fehler beim Laden von User", userId, e);
+      return { userId, user: null, success: false };
+    }
+  });
+  
+  const results = await Promise.all(contactPromises);
+  
+  for (const {userId, user, success} of results) {
+    if (!success || !user) continue;
+    
+    contactsMap.set(userId, user);
+    
+    const li = document.createElement("li");
+    li.dataset.userId = userId;
+    
+    const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || "User " + userId;
+    const username = user.username ? "@" + user.username : "";
+    
+    li.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(name)}</div>
+      <div style="font-size: 0.875rem; color: #6b7985;">${escapeHtml(username)}</div>
+    `;
+    
+    li.onclick = async () => {
+      // Erstelle oder öffne privaten Chat mit diesem User
+      try {
+        const chat = await invoke({ 
+          "@type": "createPrivateChat", 
+          "user_id": userId,
+          "force": false
+        });
+        openChat(chat.id);
+        switchView('chats'); // Wechsle zurück zu Chats
+      } catch (e) {
+        console.error("Fehler beim Erstellen des Chats:", e);
+      }
+    };
+    
+    ul.appendChild(li);
+  }
+  
+  console.log(`✅ ${contactsMap.size} Kontakte geladen`);
+}
+
+function switchView(view) {
+  currentView = view;
+  
+  // Update Buttons
+  const chatsBtn = document.getElementById("view-chats");
+  const contactsBtn = document.getElementById("view-contacts");
+  
+  if (chatsBtn && contactsBtn) {
+    if (view === 'chats') {
+      chatsBtn.classList.add('active');
+      contactsBtn.classList.remove('active');
+      loadChats();
+    } else {
+      contactsBtn.classList.add('active');
+      chatsBtn.classList.remove('active');
+      loadContacts();
+    }
+  }
+}
+
+// === BROADCAST ===
+
+let selectedChatsForBroadcast = new Set();
+
+function showBroadcastDialog() {
+  // Dialog HTML erstellen
+  const dialog = document.createElement('div');
+  dialog.id = 'broadcast-dialog';
+  dialog.className = 'dialog-overlay';
+  
+  let chatsHTML = '';
+  chatMap.forEach((chat, chatId) => {
+    const title = chat.title || "Chat " + chatId;
+    chatsHTML += `
+      <label class="broadcast-chat-item">
+        <input type="checkbox" value="${chatId}" onchange="toggleBroadcastChat(${chatId})">
+        <span>${escapeHtml(title)}</span>
+      </label>
+    `;
+  });
+  
+  dialog.innerHTML = `
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Broadcast-Nachricht senden</h3>
+        <button onclick="closeBroadcastDialog()" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="broadcast-chats">
+          ${chatsHTML}
+        </div>
+        <textarea id="broadcast-message" placeholder="Nachricht eingeben..." rows="4"></textarea>
+      </div>
+      <div class="dialog-footer">
+        <button onclick="closeBroadcastDialog()" class="btn-secondary">Abbrechen</button>
+        <button onclick="sendBroadcast()" class="btn-primary">An ${selectedChatsForBroadcast.size} Chats senden</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+}
+
+function closeBroadcastDialog() {
+  const dialog = document.getElementById('broadcast-dialog');
+  if (dialog) {
+    dialog.remove();
+  }
+  selectedChatsForBroadcast.clear();
+}
+
+function toggleBroadcastChat(chatId) {
+  if (selectedChatsForBroadcast.has(chatId)) {
+    selectedChatsForBroadcast.delete(chatId);
+  } else {
+    selectedChatsForBroadcast.add(chatId);
+  }
+  
+  // Update Button Text
+  const btn = document.querySelector('.dialog-footer .btn-primary');
+  if (btn) {
+    btn.textContent = `An ${selectedChatsForBroadcast.size} Chats senden`;
+  }
+}
+
+async function sendBroadcast() {
+  const messageText = document.getElementById('broadcast-message').value.trim();
+  
+  if (!messageText) {
+    alert("Bitte geben Sie eine Nachricht ein!");
+    return;
+  }
+  
+  if (selectedChatsForBroadcast.size === 0) {
+    alert("Bitte wählen Sie mindestens einen Chat aus!");
+    return;
+  }
+  
+  const btn = document.querySelector('.dialog-footer .btn-primary');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Sende...";
+  }
+  
+  let sent = 0;
+  let failed = 0;
+  
+  for (const chatId of selectedChatsForBroadcast) {
+    try {
+      await invoke({
+        "@type": "sendMessage",
+        "chat_id": chatId,
+        "input_message_content": {
+          "@type": "inputMessageText",
+          "text": { "@type": "formattedText", "text": messageText }
+        }
+      });
+      sent++;
+      console.log(`✅ Broadcast gesendet an Chat ${chatId}`);
+    } catch (e) {
+      failed++;
+      console.error(`❌ Broadcast fehlgeschlagen für Chat ${chatId}:`, e);
+    }
+  }
+  
+  alert(`Broadcast abgeschlossen!\nErfolgreich: ${sent}\nFehlgeschlagen: ${failed}`);
+  closeBroadcastDialog();
+}

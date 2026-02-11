@@ -35,17 +35,29 @@
         <button id="view-chats" class="view-btn active" onclick="switchView('chats')">Chats</button>
         <button id="view-contacts" class="view-btn" onclick="switchView('contacts')">Kontakte</button>
       </div>
+      <div class="sidebar-actions">
+        <button onclick="showCreateGroupDialog()" class="action-btn">➕ Gruppe</button>
+        <button onclick="showCreateChannelDialog()" class="action-btn">📢 Kanal</button>
+      </div>
     </div>
     <ul id="chat-list"></ul>
   </div>
   <div id="main">
+    <div id="chat-header" class="hidden">
+      <div id="chat-info">
+        <h4 id="chat-title">Chat</h4>
+        <span id="chat-subtitle"></span>
+      </div>
+      <div id="chat-actions">
+        <button onclick="showChatInfo()" class="header-btn">ℹ️</button>
+      </div>
+    </div>
     <div id="messages"></div>
     <div id="composer">
       <input id="msg" type="text" placeholder="Nachricht schreiben…" autocomplete="off" />
       <input id="file" type="file" accept="image/*,video/*,application/*" />
       <button onclick="sendMsg()">Senden</button>
       <button onclick="sendFile()">Datei</button>
-      <button onclick="showBroadcastDialog()" class="btn-broadcast">📢 Broadcast</button>
     </div>
   </div>
 </div>

@@ -373,6 +373,31 @@ async function openChat(chatId) {
   
   console.log(`💬 Öffne Chat ${chatId}...`);
   
+  // Update Chat-Header
+  const chat = chatMap.get(chatId);
+  if (chat) {
+    const header = document.getElementById("chat-header");
+    const title = document.getElementById("chat-title");
+    const subtitle = document.getElementById("chat-subtitle");
+    
+    if (header && title && subtitle) {
+      header.classList.remove("hidden");
+      title.textContent = chat.title || "Chat " + chatId;
+      
+      // Chat-Typ anzeigen
+      const chatType = chat.type?.["@type"] || chat.type?.["_"];
+      let subtitleText = "";
+      if (chatType === "chatTypeSupergroup") {
+        subtitleText = chat.type.is_channel ? "Kanal" : "Supergruppe";
+      } else if (chatType === "chatTypeBasicGroup") {
+        subtitleText = "Gruppe";
+      } else if (chatType === "chatTypePrivate") {
+        subtitleText = "Privater Chat";
+      }
+      subtitle.textContent = subtitleText;
+    }
+  }
+  
   try {
     const hist = await invoke({
       "@type": "getChatHistory",
@@ -855,23 +880,21 @@ function switchView(view) {
   }
 }
 
-// === BROADCAST ===
+// === GRUPPEN & KANÄLE ===
 
-let selectedChatsForBroadcast = new Set();
-
-function showBroadcastDialog() {
-  // Dialog HTML erstellen
+function showCreateGroupDialog() {
   const dialog = document.createElement('div');
-  dialog.id = 'broadcast-dialog';
+  dialog.id = 'create-group-dialog';
   dialog.className = 'dialog-overlay';
   
-  let chatsHTML = '';
-  chatMap.forEach((chat, chatId) => {
-    const title = chat.title || "Chat " + chatId;
-    chatsHTML += `
-      <label class="broadcast-chat-item">
-        <input type="checkbox" value="${chatId}" onchange="toggleBroadcastChat(${chatId})">
-        <span>${escapeHtml(title)}</span>
+  // Hole verfügbare Kontakte
+  let contactsHTML = '';
+  contactsMap.forEach((user, userId) => {
+    const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || "User " + userId;
+    contactsHTML += `
+      <label class="contact-select-item">
+        <input type="checkbox" value="${userId}" class="group-member-checkbox">
+        <span>${escapeHtml(name)}</span>
       </label>
     `;
   });
@@ -879,18 +902,24 @@ function showBroadcastDialog() {
   dialog.innerHTML = `
     <div class="dialog-content">
       <div class="dialog-header">
-        <h3>Broadcast-Nachricht senden</h3>
-        <button onclick="closeBroadcastDialog()" class="dialog-close">✕</button>
+        <h3>Neue Gruppe erstellen</h3>
+        <button onclick="closeDialog('create-group-dialog')" class="dialog-close">✕</button>
       </div>
       <div class="dialog-body">
-        <div class="broadcast-chats">
-          ${chatsHTML}
+        <div class="form-group">
+          <label>Gruppen-Name</label>
+          <input type="text" id="group-name" placeholder="z.B. Familie, Freunde..." class="dialog-input">
         </div>
-        <textarea id="broadcast-message" placeholder="Nachricht eingeben..." rows="4"></textarea>
+        <div class="form-group">
+          <label>Mitglieder auswählen (min. 1)</label>
+          <div class="contact-select-list">
+            ${contactsHTML || '<p style="color: #6b7985;">Keine Kontakte verfügbar. Fügen Sie zuerst Kontakte hinzu.</p>'}
+          </div>
+        </div>
       </div>
       <div class="dialog-footer">
-        <button onclick="closeBroadcastDialog()" class="btn-secondary">Abbrechen</button>
-        <button onclick="sendBroadcast()" class="btn-primary">An ${selectedChatsForBroadcast.size} Chats senden</button>
+        <button onclick="closeDialog('create-group-dialog')" class="btn-secondary">Abbrechen</button>
+        <button onclick="createGroup()" class="btn-primary">Gruppe erstellen</button>
       </div>
     </div>
   `;
@@ -898,68 +927,303 @@ function showBroadcastDialog() {
   document.body.appendChild(dialog);
 }
 
-function closeBroadcastDialog() {
-  const dialog = document.getElementById('broadcast-dialog');
+async function createGroup() {
+  const groupName = document.getElementById('group-name').value.trim();
+  const selectedMembers = Array.from(document.querySelectorAll('.group-member-checkbox:checked'))
+    .map(cb => parseInt(cb.value));
+  
+  if (!groupName) {
+    alert("Bitte geben Sie einen Gruppen-Namen ein!");
+    return;
+  }
+  
+  if (selectedMembers.length === 0) {
+    alert("Bitte wählen Sie mindestens ein Mitglied aus!");
+    return;
+  }
+  
+  const btn = document.querySelector('#create-group-dialog .btn-primary');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Erstelle...";
+  }
+  
+  try {
+    const result = await invoke({
+      "@type": "createNewBasicGroupChat",
+      "user_ids": selectedMembers,
+      "title": groupName
+    });
+    
+    console.log("✅ Gruppe erstellt:", result);
+    alert(`Gruppe "${groupName}" erfolgreich erstellt!`);
+    closeDialog('create-group-dialog');
+    
+    // Lade Chats neu
+    loadChats();
+    
+    // Öffne die neue Gruppe
+    if (result.id) {
+      openChat(result.id);
+    }
+  } catch (e) {
+    console.error("❌ Fehler beim Erstellen der Gruppe:", e);
+    alert("Fehler beim Erstellen der Gruppe: " + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Gruppe erstellen";
+    }
+  }
+}
+
+function showCreateChannelDialog() {
+  const dialog = document.createElement('div');
+  dialog.id = 'create-channel-dialog';
+  dialog.className = 'dialog-overlay';
+  
+  dialog.innerHTML = `
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Neuen Kanal erstellen</h3>
+        <button onclick="closeDialog('create-channel-dialog')" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-group">
+          <label>Kanal-Name</label>
+          <input type="text" id="channel-name" placeholder="z.B. News, Updates..." class="dialog-input">
+        </div>
+        <div class="form-group">
+          <label>Beschreibung (optional)</label>
+          <textarea id="channel-description" placeholder="Worum geht es in diesem Kanal?" rows="3" class="dialog-input"></textarea>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="channel-is-public">
+            Öffentlicher Kanal (mit Username)
+          </label>
+        </div>
+        <div class="form-group" id="channel-username-group" style="display: none;">
+          <label>Username</label>
+          <input type="text" id="channel-username" placeholder="mein_kanal" class="dialog-input">
+          <small style="color: #6b7985;">Nur Buchstaben, Zahlen und Unterstriche</small>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button onclick="closeDialog('create-channel-dialog')" class="btn-secondary">Abbrechen</button>
+        <button onclick="createChannel()" class="btn-primary">Kanal erstellen</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+  
+  // Toggle Username-Feld
+  document.getElementById('channel-is-public').addEventListener('change', (e) => {
+    document.getElementById('channel-username-group').style.display = 
+      e.target.checked ? 'block' : 'none';
+  });
+}
+
+async function createChannel() {
+  const channelName = document.getElementById('channel-name').value.trim();
+  const channelDescription = document.getElementById('channel-description').value.trim();
+  const isPublic = document.getElementById('channel-is-public').checked;
+  const username = document.getElementById('channel-username').value.trim();
+  
+  if (!channelName) {
+    alert("Bitte geben Sie einen Kanal-Namen ein!");
+    return;
+  }
+  
+  if (isPublic && !username) {
+    alert("Bitte geben Sie einen Username für den öffentlichen Kanal ein!");
+    return;
+  }
+  
+  const btn = document.querySelector('#create-channel-dialog .btn-primary');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Erstelle...";
+  }
+  
+  try {
+    // Schritt 1: Kanal erstellen
+    const result = await invoke({
+      "@type": "createNewSupergroupChat",
+      "title": channelName,
+      "is_channel": true,
+      "description": channelDescription || ""
+    });
+    
+    console.log("✅ Kanal erstellt:", result);
+    
+    // Schritt 2: Wenn öffentlich, Username setzen
+    if (isPublic && username && result.id) {
+      try {
+        // Hole Supergroup ID aus Chat
+        const chat = await invoke({ "@type": "getChat", "chat_id": result.id });
+        const supergroupId = chat.type?.supergroup_id;
+        
+        if (supergroupId) {
+          await invoke({
+            "@type": "setSupergroupUsername",
+            "supergroup_id": supergroupId,
+            "username": username
+          });
+          console.log("✅ Username gesetzt:", username);
+        }
+      } catch (e) {
+        console.warn("⚠️ Konnte Username nicht setzen:", e);
+      }
+    }
+    
+    alert(`Kanal "${channelName}" erfolgreich erstellt!`);
+    closeDialog('create-channel-dialog');
+    
+    // Lade Chats neu
+    loadChats();
+    
+    // Öffne den neuen Kanal
+    if (result.id) {
+      openChat(result.id);
+    }
+  } catch (e) {
+    console.error("❌ Fehler beim Erstellen des Kanals:", e);
+    alert("Fehler beim Erstellen des Kanals: " + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Kanal erstellen";
+    }
+  }
+}
+
+function showChatInfo() {
+  if (!currentChatId) return;
+  
+  const chat = chatMap.get(currentChatId);
+  if (!chat) return;
+  
+  const chatType = chat.type?.["@type"] || chat.type?.["_"];
+  
+  const dialog = document.createElement('div');
+  dialog.id = 'chat-info-dialog';
+  dialog.className = 'dialog-overlay';
+  
+  let actionsHTML = '';
+  
+  // Gruppen-spezifische Aktionen
+  if (chatType === 'chatTypeSupergroup' || chatType === 'chatTypeBasicGroup') {
+    actionsHTML = `
+      <button onclick="showAddMembersDialog()" class="btn-primary">Mitglieder hinzufügen</button>
+      <button onclick="showEditGroupDialog()" class="btn-secondary">Gruppe bearbeiten</button>
+    `;
+  }
+  
+  dialog.innerHTML = `
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Chat-Info</h3>
+        <button onclick="closeDialog('chat-info-dialog')" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <h4>${escapeHtml(chat.title || 'Chat')}</h4>
+        <p><strong>Typ:</strong> ${chatType}</p>
+        <p><strong>ID:</strong> ${chat.id}</p>
+        ${chat.type?.supergroup_id ? `<p><strong>Supergroup ID:</strong> ${chat.type.supergroup_id}</p>` : ''}
+        <div class="chat-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          ${actionsHTML}
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button onclick="closeDialog('chat-info-dialog')" class="btn-secondary">Schließen</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+}
+
+async function showAddMembersDialog() {
+  closeDialog('chat-info-dialog');
+  
+  if (!currentChatId) return;
+  
+  const dialog = document.createElement('div');
+  dialog.id = 'add-members-dialog';
+  dialog.className = 'dialog-overlay';
+  
+  // Hole verfügbare Kontakte
+  let contactsHTML = '';
+  contactsMap.forEach((user, userId) => {
+    const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || "User " + userId;
+    contactsHTML += `
+      <label class="contact-select-item">
+        <input type="checkbox" value="${userId}" class="add-member-checkbox">
+        <span>${escapeHtml(name)}</span>
+      </label>
+    `;
+  });
+  
+  dialog.innerHTML = `
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>Mitglieder hinzufügen</h3>
+        <button onclick="closeDialog('add-members-dialog')" class="dialog-close">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="contact-select-list">
+          ${contactsHTML || '<p style="color: #6b7985;">Keine Kontakte verfügbar.</p>'}
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button onclick="closeDialog('add-members-dialog')" class="btn-secondary">Abbrechen</button>
+        <button onclick="addMembersToChat()" class="btn-primary">Hinzufügen</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+}
+
+async function addMembersToChat() {
+  const selectedMembers = Array.from(document.querySelectorAll('.add-member-checkbox:checked'))
+    .map(cb => parseInt(cb.value));
+  
+  if (selectedMembers.length === 0) {
+    alert("Bitte wählen Sie mindestens ein Mitglied aus!");
+    return;
+  }
+  
+  const btn = document.querySelector('#add-members-dialog .btn-primary');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Füge hinzu...";
+  }
+  
+  try {
+    for (const userId of selectedMembers) {
+      await invoke({
+        "@type": "addChatMember",
+        "chat_id": currentChatId,
+        "user_id": userId
+      });
+    }
+    
+    alert(`${selectedMembers.length} Mitglied(er) erfolgreich hinzugefügt!`);
+    closeDialog('add-members-dialog');
+  } catch (e) {
+    console.error("❌ Fehler beim Hinzufügen von Mitgliedern:", e);
+    alert("Fehler: " + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Hinzufügen";
+    }
+  }
+}
+
+function closeDialog(dialogId) {
+  const dialog = document.getElementById(dialogId);
   if (dialog) {
     dialog.remove();
   }
-  selectedChatsForBroadcast.clear();
-}
-
-function toggleBroadcastChat(chatId) {
-  if (selectedChatsForBroadcast.has(chatId)) {
-    selectedChatsForBroadcast.delete(chatId);
-  } else {
-    selectedChatsForBroadcast.add(chatId);
-  }
-  
-  // Update Button Text
-  const btn = document.querySelector('.dialog-footer .btn-primary');
-  if (btn) {
-    btn.textContent = `An ${selectedChatsForBroadcast.size} Chats senden`;
-  }
-}
-
-async function sendBroadcast() {
-  const messageText = document.getElementById('broadcast-message').value.trim();
-  
-  if (!messageText) {
-    alert("Bitte geben Sie eine Nachricht ein!");
-    return;
-  }
-  
-  if (selectedChatsForBroadcast.size === 0) {
-    alert("Bitte wählen Sie mindestens einen Chat aus!");
-    return;
-  }
-  
-  const btn = document.querySelector('.dialog-footer .btn-primary');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Sende...";
-  }
-  
-  let sent = 0;
-  let failed = 0;
-  
-  for (const chatId of selectedChatsForBroadcast) {
-    try {
-      await invoke({
-        "@type": "sendMessage",
-        "chat_id": chatId,
-        "input_message_content": {
-          "@type": "inputMessageText",
-          "text": { "@type": "formattedText", "text": messageText }
-        }
-      });
-      sent++;
-      console.log(`✅ Broadcast gesendet an Chat ${chatId}`);
-    } catch (e) {
-      failed++;
-      console.error(`❌ Broadcast fehlgeschlagen für Chat ${chatId}:`, e);
-    }
-  }
-  
-  alert(`Broadcast abgeschlossen!\nErfolgreich: ${sent}\nFehlgeschlagen: ${failed}`);
-  closeBroadcastDialog();
 }

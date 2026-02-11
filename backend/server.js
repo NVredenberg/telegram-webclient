@@ -17,6 +17,7 @@ const rawApiHash = process.env.API_HASH ?? '';
 const API_HASH = String(rawApiHash).trim().replace(/^"+|"+$/g, ''); 
 
 const PHONE_NUMBER_DEFAULT = process.env.PHONE_NUMBER || "";
+const BOT_TOKEN = process.env.BOT_TOKEN || ""; // NEU: Bot-Token Support
 const PORT = Number(process.env.PORT) || 1993;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
@@ -30,19 +31,24 @@ if (!API_HASH || API_HASH.length < 10) {
   process.exit(1);
 }
 
+// Bot oder User Mode
+const IS_BOT = !!BOT_TOKEN;
+console.log(`[MODE] ${IS_BOT ? '🤖 Bot-Modus' : '👤 User-Modus'}`);
+
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
 console.log(`[BOOT] API_ID=${API_ID}, API_HASH[0..5]=${API_HASH.slice(0,6)}...`);
+if (IS_BOT) console.log(`[BOOT] Bot-Token erkannt`);
 
 tdl.configure({ tdjson: getTdjson() });
 
 
 // TDLib Client initialisieren (7.x-/8.x-Stil)
 const client = tdl.createClient({
-  apiId: API_ID,            // number (du castest weiter oben korrekt)
-  apiHash: API_HASH,        // string
+  apiId: API_ID,
+  apiHash: API_HASH,
 
   tdlibParameters: {
     api_id: API_ID,
@@ -188,48 +194,59 @@ async function startLogin() {
   try {
     console.log("🚀 Starte Login-Prozess...");
     
-    await client.login(() => ({
-      type: "user",
-      getPhoneNumber: () =>
-        new Promise((resolve, reject) => {
-          console.log("📞 Warte auf Telefonnummer...");
-          resolvePhone = resolve;
-          loginTimeout = setTimeout(() => {
-            console.error("⏱️ Phone timeout");
-            reject(new Error("Phone timeout"));
-            clearLoginState();
-          }, 300000); // 5 Minuten
-          
-          if (PHONE_NUMBER_DEFAULT) {
-            console.log(`📱 Verwende Standard-Telefonnummer`);
-            resolve(PHONE_NUMBER_DEFAULT);
-            clearTimeout(loginTimeout);
-          }
-        }),
-      getAuthCode: () =>
-        new Promise((resolve, reject) => {
-          console.log("🔢 Warte auf Auth-Code...");
-          resolveCode = resolve;
-          loginTimeout = setTimeout(() => {
-            console.error("⏱️ Code timeout");
-            reject(new Error("Code timeout"));
-            clearLoginState();
-          }, 300000);
-        }),
-      getPassword: () =>
-        new Promise((resolve, reject) => {
-          console.log("🔒 Warte auf 2FA-Passwort...");
-          resolvePassword = resolve;
-          loginTimeout = setTimeout(() => {
-            console.error("⏱️ Password timeout");
-            reject(new Error("Password timeout"));
-            clearLoginState();
-          }, 300000);
-        })
-    }));
+    // Bot-Login oder User-Login
+    if (IS_BOT && BOT_TOKEN) {
+      console.log("🤖 Bot-Login mit Token...");
+      await client.login(() => ({
+        type: "bot",
+        getToken: () => Promise.resolve(BOT_TOKEN)
+      }));
+      console.log("✅ Bot-Login erfolgreich!");
+    } else {
+      // User-Login
+      await client.login(() => ({
+        type: "user",
+        getPhoneNumber: () =>
+          new Promise((resolve, reject) => {
+            console.log("📞 Warte auf Telefonnummer...");
+            resolvePhone = resolve;
+            loginTimeout = setTimeout(() => {
+              console.error("⏱️ Phone timeout");
+              reject(new Error("Phone timeout"));
+              clearLoginState();
+            }, 300000); // 5 Minuten
+            
+            if (PHONE_NUMBER_DEFAULT) {
+              console.log(`📱 Verwende Standard-Telefonnummer`);
+              resolve(PHONE_NUMBER_DEFAULT);
+              clearTimeout(loginTimeout);
+            }
+          }),
+        getAuthCode: () =>
+          new Promise((resolve, reject) => {
+            console.log("🔢 Warte auf Auth-Code...");
+            resolveCode = resolve;
+            loginTimeout = setTimeout(() => {
+              console.error("⏱️ Code timeout");
+              reject(new Error("Code timeout"));
+              clearLoginState();
+            }, 300000);
+          }),
+        getPassword: () =>
+          new Promise((resolve, reject) => {
+            console.log("🔒 Warte auf 2FA-Passwort...");
+            resolvePassword = resolve;
+            loginTimeout = setTimeout(() => {
+              console.error("⏱️ Password timeout");
+              reject(new Error("Password timeout"));
+              clearLoginState();
+            }, 300000);
+          })
+      }));
+      console.log("✅ User-Login erfolgreich!");
+    }
 
     clearLoginState();
-    console.log("✅ Login erfolgreich abgeschlossen!");
   } catch (error) {
     console.error("❌ Login fehlgeschlagen:", error);
     clearLoginState();
